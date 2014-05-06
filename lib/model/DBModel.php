@@ -6,10 +6,21 @@ class DBModel extends AbstractModel{
 	const GROUP_SEP = "ϚϚ";
 	const FIELD_SEP = "ΘΘ";
 	
-	public function __construct(){
-		parent::__construct();
+	public function __construct( $args = array() ){
+		parent::__construct( $args );
 	}
 	
+	public function getDefaults(){
+		return array(
+			'order_by' => '{{id}}',
+			'order' => 'DESC',
+			'limit' => null,
+			'offset' => 0,
+			'not' => null,
+			'where' => array()
+		);
+	}
+
 	public function getOne($id){
 		$result = $this->getResults($this->buildQuery($id));
 		return is_array($result) ? array_shift($result) : false;
@@ -59,34 +70,245 @@ class DBModel extends AbstractModel{
 				}
 			}
 		}
-		else{
-			$time = $results['time'];
-			$results = $results['results'];
-
-			$map = $this->get('map');
-			if (isset($map['modified_date'])){
-				$delta_query = $query . $wpdb->prepare(' AND '.$map['modified_date']['table'].'.'.$map['modified_date']['column'].' > %s',date("Y-m-d H:i:s", $time));
-				$delta = $this->getResults($delta_query,false); // All data that has changed since last run
-				
-				if (!empty($delta)){
-					foreach ($delta as $key => $result){
-						$results[$key] = $result;
-					}
-					
-					// I'd rather use the set_transient function, but it seems it's a memory abuser.  When I called set_transient, then I got memory
-					// allocation errors (max memory reached).  So, instead, I'm running the $wpdb->update method directly.  Lame.  
-					// Also, for some reason, this update process takes up to 3 seconds (for my testing with 2200 records).  Double lame.  
-					// At least that will only happen when there's an update made.  Lame lame lame.
-					$wpdb->update( $wpdb->options, array( 'option_value' => serialize(array('time' => time(),'results' => $results)) ), array( 'option_name' => '_transient_dbModel_'.md5($query) ) );
-					//set_transient('dbModel_'.md5($query),array('time' => time(),'results' => $results));
-				}
-			}
-		}
 		
 		return $results;
 	}
 	
-	public function buildQuery($key = null){
+	public function buildQuery( $key = null ){
+		if ( isset( $key ) ){
+			if ( is_array( $key ) ){
+				// Requesting Some in the form of an array of IDs
+				global $wpdb;
+			
+				if ( isset( $limit ) ){
+					$key = array_slice( $key, ( isset( $offset ) ? $offset : 0 ), $limit );
+				}
+			
+				$query = $this->buildBasicQuery( $key );
+				if ( !empty( $key ) ){
+					if ( $order_by == 'ordered_ids' ){
+						$query.= $wpdb->prepare(" ORDER BY FIND_IN_SET( id, %s )", implode( ',', $key ) );
+					}
+				}
+				else{ 
+					$query.= ' AND 1=2'; // no matches found
+				}
+			}
+			else{
+				// Requesting One ID, just use the BasicQuery
+				$query = $this->buildBasicQuery( $key );
+			}
+			
+			// that's all we need if we've been supplied with a single id or list of ids	
+			return $query;
+		}
+
+		// If not supplied with an ID, then we need to build the query based on $this->get( 'args' )
+		extract( $this->get( 'args' ) );
+		
+		// Setup the basic query
+		$query = $this->buildBasicQuery();
+		
+		global $wpdb;
+		
+		$joins = array();
+		$wheres = array();
+		$query_wheres = array();
+		$query_order = array();
+		$w = 0;
+		$map = $this->get( 'map' );
+
+		// $where comes from $this->get( 'args' )
+		if ( !empty( $where ) ){
+			
+			if ( !is_array( $where ) ){
+				// Single ID
+				$query_wheres[] = $wpdb->prepare( "`id` = %d", $where );
+			}
+			elseif ( !self::is_assoc( $where ) ){
+				// It's just an array of ids
+				$query_wheres[] = $wpdb->prepare( "`id` IN (" . implode(',',array_fill( 0, count( $where ), '%d' )) . ")", $where );
+			}
+			else{
+				// It's an associative array, let's go through each element therein and winnow down the IDs that we might want to pass to the Model->getSome()
+				foreach( $where as $key => $value ){
+					if ( isset( $meta_key ) ) unset( $meta_key );
+					list( $index, $meta_key ) = explode( '.', $key );
+					$as = "w{$w}"; $w++;
+
+					if ( isset( $meta_key ) ){
+						$table_name = $map[ $index ]['table'];
+						list( $key_column, $value_column ) = $map[ $index ]['column']; // an assumption here is that the map column is setup as, i.e. array( 'meta_key', 'meta_value' )
+						foreach ( $map[ $index ][ 'where' ] as $id_column => $assignment ){
+							if ( $assignment == '{{id}}' ){
+								// found the $id_column
+								break;
+							}
+						}
+						
+						$joins[] = "INNER JOIN `$table_name` $as ON $as.$id_column = p.{$map['id']['column']}";
+						$wheres[] = $wpdb->prepare( "$as.$key_column = %s", $meta_key );
+						
+						if ( is_bool( $value ) ){
+							if ( $value ){
+								// Just checking if the row exists
+								continue;
+							}
+							else{
+								// want it where the row DOES NOT exist
+								array_pop( $joins ); // pop off the INNER JOIN from above
+								$joins[] = "LEFT JOIN `$table_name` $as ON $as.id = sub_id AND $as.id IS NULL";
+							}
+						}
+						elseif( is_array( $value ) ){
+							// They want one of any of these values
+							$placeholder = '%s'; // @todo, maybe this should be %d in some circumstances
+							$wheres[] = $wpdb->prepare( "$as.$value_column IN (" . implode(',',array_fill( 0, count( $value ), $placeholder )) . ")", $value );
+						}
+						elseif ( is_object( $value ) ){
+							// They want a range (object)array( $from, $to )
+							switch( true ){
+							case !isset( $value->to ):
+								$placeholder = self::placeholder( $value->from );
+								$wheres[] = $wpdb->prepare( "$as.$value_column >= $placeholder", $value->from );
+								break;
+							case !isset( $value->from ):
+								$placeholder = self::placeholder( $value->to );
+								$wheres[] = $wpdb->prepare( "$as.$value_column <= $placeholder", $value->to );
+								break;
+							case isset( $value->from ) && isset( $value->to ):
+								$pf = self::placeholder( $value->from );
+								$pt = self::placeholder( $value->to );
+								$wheres[] = $wpdb->prepare( "$as.$value_column BETWEEN $pf AND $pt", $value->from, $value->to );
+								break;
+							}
+						}
+						else{
+							// Just looking for a value
+							$placeholder = self::placeholder( $value );
+							$wheres[] = $wpdb->prepare( "$as.$value_column = $placeholder", $value );
+						}
+					}
+					else{
+						// It must be in the main table 
+						$table_name = $map['id']['table'];
+						if ( is_bool( $value ) ){
+							$query_wheres[] = "$table_name.`$key` IS " . ( $value ? 'NOT' : '' ) . " NULL";
+						}
+						elseif( is_array( $value ) ){
+							// It's a range
+							$query_wheres[] = $wpdb->prepare( "$table_name.`$key` BETWEEN %s AND %s)", $value );
+						}
+						else{
+							$query_wheres[] = $wpdb->prepare( "$table_name.`$key` = %s)", $value );
+						}
+					}
+				}
+			}
+			
+		}
+
+		$sql_order = array();
+		if ( !empty( $order_by ) ){
+			if ( $order_by === 'random'){ // @DEBUG
+				// Note, this is a nice way to get random results from a large dataset
+				// ORDER BY RAND() is not efficient at all.  See my comment at http://davidwalsh.name/mysql-random
+				$sql_order[] = 'MD5( CONCAT( sub_id, CURRENT_TIMESTAMP ) )';
+			}
+			else{
+				if ( !is_array( $order_by ) ){
+					$order_by = array( $order_by );
+				}
+				foreach ( $order_by as $number => $ob ){
+					if ( isset( $meta_key ) ) unset( $meta_key );
+					list( $index, $meta_key ) = explode( '.', $ob );
+					
+					if ( isset( $meta_key ) ){						
+						foreach ( $map[ $index ][ 'where' ] as $id_column => $assignment ){
+							if ( $assignment == '{{id}}' ){
+								// found the $id_column
+								break;
+							}
+						}
+
+						$table_name = $map[ $index ]['table'];
+						list( $key_column, $value_column ) = $map[ $index ]['column']; // an assumption here is that the map column is setup as, i.e. array( 'meta_key', 'meta_value' )
+						$as = "o$number";
+						
+						$joins[] = "LEFT JOIN `$table_name` $as ON $as.$id_column = p.{$map['id']['column']}";
+						$wheres[] = $wpdb->prepare( "$as.$key_column = %s", $meta_key );
+						$sql_order[] = "$as.$value_column $order";
+					}
+					else{
+						$table_name = $map['id']['table'];
+						$query_order[] = $this->resolveReferences( $table_name, $ob, 'select' ). " $order";
+					}
+				}
+			}
+		}
+		
+		if ( isset( $not ) && !is_array( $not ) ){
+			$not = array( $not );
+		}
+		if ( count( $joins ) || count( $wheres ) || count( $sql_order ) ){
+			if ( isset( $not ) ){
+				$wheres[] = $wpdb->prepare( "sub_id NOT IN (" . implode(',',array_fill( 0, count( $not ), '%d' )) . ")", $not );
+				unset( $not );
+			}
+		
+			$id_table = $map['id']['table'];
+			$id_column = $map['id']['column'];
+			$where_subquery = "SELECT p.$id_column as sub_id FROM $id_table p\n\t" . implode( "\n\t", $joins );
+			if ( count( $wheres ) ){
+				$where_subquery.= " \nWHERE\n\t" . implode( "\nAND ", $wheres );
+			}
+			if ( count( $sql_order ) ){
+				$where_subquery .= "\nORDER BY " . implode( ",\n", $sql_order );
+			}
+		
+			if ( !empty( $limit ) ){
+				$where_subquery .= " LIMIT " . ( !empty( $offset ) ? "$offset, " : '' ) . " $limit";
+				unset( $limit );
+			}
+		
+			if ( !empty( $query_wheres ) ){
+				$query.= " AND " . implode( ' AND ', $query_wheres );
+			}
+		
+			$query = str_replace( "FROM $id_table", "FROM $id_table\nRIGHT JOIN ( $where_subquery ) x ON x.sub_id = `id`", $query );
+		}		
+		
+		if ( isset( $not ) ){
+			$query .= $wpdb->prepare( " AND `id` NOT IN (" . implode(',',array_fill( 0, count( $not ), '%d' )) . ")", $not );
+		}
+		
+		if ( count( $query_order ) ){
+			$query .= "\nORDER BY " . implode( ",\n", $query_order );
+		}
+		if ( !empty( $limit ) ){
+			$query .= " LIMIT " . ( !empty( $offset ) ? "$offset, " : '' ) . " $limit";
+		}
+		/*
+		echo "<pre>$query</pre>";
+		var_dump( $where );
+		die();
+		//*/
+
+		return $query;
+	}
+	
+	public static function range( $from = null, $to = null ){
+		$range = new stdClass;
+		$range->from = ( is_array( $from ) ? $from['min'] : $from );
+		$range->to = ( is_array( $to ) ? $to['max'] : $to );
+		return $range;
+	}
+	
+	public static function placeholder( $value ){
+		return !is_numeric( $value ) ? '%s' : ((strpos( $value, '.' ) !== false) ? '%f' : '%d'); 
+	}
+	
+	public function buildBasicQuery($key = null){
 		$map = $this->get('map');
 		$this->set('primary_table',$primary_table = $map[$this->get('primary_key')]['table']);
 		

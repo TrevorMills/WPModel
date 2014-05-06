@@ -8,6 +8,8 @@ Author URI: http://topquark.com
 Author: Trevor Mills
  */
 
+require_once( plugin_dir_path( __FILE__ ) . 'lib/model/WordPressModel.php' );
+
 add_shortcode('wp-model','wp_model_shortcodes');
 function wp_model_shortcodes($atts=array(),$content=null,$code=''){
 	$messages = array();
@@ -22,7 +24,6 @@ function wp_model_shortcodes($atts=array(),$content=null,$code=''){
 		$atts = shortcode_atts($defaults,$atts);
 		$atts = array_map(create_function('$a','return explode(",",$a);'),$atts);
 		
-		require_once( plugin_dir_path( __FILE__ ) . 'lib/model/WordPressModel.php' );
 		$Model = new WordPressModel();
 		
 		$beginning_queries = $Model->getQueryCount();

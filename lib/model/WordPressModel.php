@@ -4,21 +4,10 @@ require_once('DBModel.php');
 
 class WordPressModel extends DBModel{
 
-	public function __construct(){
-		parent::__construct();
-		$this->set('model',(object) array(
-			'id',
-			'date',
-			'modified_date', // Necessary to allow incremental updates to the result set
-			'title',
-			'content',
-			'attachments',
-			'categories',
-			'tags'
-		));
-
+	public function __construct( $args = array() ){
+		parent::__construct( $args );
+		
 		global $wpdb;
-		$this->set('primary_key','id');
 		$this->set('map',array(
 			'id' => array(
 					'table' => $wpdb->posts,
@@ -75,10 +64,11 @@ class WordPressModel extends DBModel{
 			)
 		));
 
+		$args = $this->get( 'args' );
 		$this->apply('bound',array(
 			'the_post_type' => array('post','page'),
 			'the_post_status' => array('publish'),
-			'the_meta_keys' => array('_thumbnail_id'),
+			'the_meta_keys' => $args['meta_keys'],
 			'relationships.term_taxonomy_id' => "{$wpdb->term_relationships}.term_taxonomy_id",
 			'taxonomy.taxonomy' => "$wpdb->term_taxonomy.taxonomy",
 			'taxonomy.term_id' => "$wpdb->term_taxonomy.term_id",
@@ -86,6 +76,44 @@ class WordPressModel extends DBModel{
 			'terms.object_id' => "$wpdb->terms.object_id",
 			'attachment.ID' => $wpdb->posts.'_sub.ID'
 		));
+
+	}
+	
+	public function buildQuery( $key = null ){
+		$args = $this->get( 'args' );
+		if ( !isset( $args[ 'meta_keys' ] ) ){
+			$this->apply( 'map', array(
+				'meta' => array(
+					'where' => array(
+						'meta_key' => null
+					)
+				)
+			));
+		}
+		else{
+			$this->apply( 'map', array(
+				'meta' => array(
+					'where' => array(
+						'meta_key' => '{{the_meta_keys}}'
+					)
+				)
+			));
+			$this->bind( 'the_meta_keys', $args['meta_keys'] );
+		}
+		return parent::buildQuery( $key );
+	}
+	
+	public function getDefaults(){
+		return array(
+			'meta_keys' => null,
+			'order_by' => 'post_date',
+			'order' => 'DESC',
+			'limit' => null,
+			'offset' => 0,
+			'not' => null,
+			'where' => array(),
+			'ordered_ids' => null
+		);
 	}
 
 	public function termMap($taxonomy='category'){

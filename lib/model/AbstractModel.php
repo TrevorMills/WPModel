@@ -27,11 +27,10 @@ if (!class_exists('AbstractModel')) :
 abstract class AbstractModel{
 	var $parms;
 
-	public function __construct(){
-		$this->parms = array(
-			'model' => array(),
-			'map' => array()
-		);
+	public function __construct( $args = array() ){
+		$this->set( 'map', array() );
+		$this->set( 'primary_key', 'id' );
+		$this->set( 'args', wp_parse_args( $args, $this->getDefaults() ) );
 	}
 
 	/**
@@ -40,6 +39,8 @@ abstract class AbstractModel{
 	 *
 	 **/
 	abstract public function getOne($id);
+	
+	abstract public function getDefaults();
 
 	public function get($what=null){
 		if ($what != null){
@@ -104,7 +105,9 @@ abstract class AbstractModel{
 		        foreach ($array as $key => $value)
 	                if (is_array($value) && array_key_exists($key, $merged) && is_array($merged[$key]))
 	                    $merged[$key] = call_user_func(array(&$this,'array_merge_recursive'), $merged[$key], $value);
-	                else
+	                elseif ( !isset( $value ) )
+						unset( $merged[$key] );
+					else
 	                    $merged[$key] = $value;
 			}
 			else{
