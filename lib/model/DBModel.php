@@ -5,38 +5,31 @@ require_once('AbstractModel.php');
 class DBModel extends AbstractModel{
 	const GROUP_SEP = "ϚϚ";
 	const FIELD_SEP = "ΘΘ";
-	var $use_cache = false; // still buggy
-
+	
 	public function __construct(){
 		parent::__construct();
 	}
-
+	
 	public function getOne($id){
 		$result = $this->getResults($this->buildQuery($id));
 		return is_array($result) ? array_shift($result) : false;
 	}
-
+	
 	public function getSome($ids){
 		return $this->getResults($this->buildQuery($ids));
 	}
-
+	
 	public function getAll(){
 		return $this->getResults($this->buildQuery());
 	}
-
-	public function getResults($query,$use_cache=null){
+	
+	public function getResults($query){
 		global $wpdb;
-
-		if (!isset($use_cache)){
-			$use_cache = $this->use_cache;
-		}
-
+		
 		// Necessary to allow for long group concatenations to be returned properly
 		$wpdb->query('SET SESSION group_concat_max_len = 100000000');
-		// Necessary to allow us to store large results as transients
-		//$wpdb->query('SET GLOBAL max_allowed_packet = 100000000000');
-		//echo "<pre>$query</pre>"; die();
-		$results = ($use_cache ? get_transient('dbModel_'.md5($query)) : false);
+
+		$results = false; // placeholder for caching solution
 		if (!$results){
 			$_results = $wpdb->get_results($query);
 			$results = array();
@@ -46,22 +39,24 @@ class DBModel extends AbstractModel{
 				unset($_results[$r]); // cleanup
 			}
 			unset($_results);
-
+			
 			$factories = $this->get('factories');
 			if (!empty($factories)){
 				foreach ($results as $r => $row){
 					foreach ($row as $field => $value){
 						if (isset($factories[$field])){
 							foreach ($factories[$field] as $factory){
-								$value = call_user_func($factory,$value);
+								if (!isset($value)){
+									$value = array(); // just default to an empty array
+								}
+								else{
+									$value = call_user_func($factory,$value);
+								}
 							}
 							$results[$r]->$field = $value;
 						}
 					}
 				}
-			}
-			if ($use_cache){
-				set_transient('dbModel_'.md5($query),array('time' => time(),'results' => $results));
 			}
 		}
 		else{
@@ -72,36 +67,36 @@ class DBModel extends AbstractModel{
 			if (isset($map['modified_date'])){
 				$delta_query = $query . $wpdb->prepare(' AND '.$map['modified_date']['table'].'.'.$map['modified_date']['column'].' > %s',date("Y-m-d H:i:s", $time));
 				$delta = $this->getResults($delta_query,false); // All data that has changed since last run
-
+				
 				if (!empty($delta)){
 					foreach ($delta as $key => $result){
 						$results[$key] = $result;
 					}
-
+					
 					// I'd rather use the set_transient function, but it seems it's a memory abuser.  When I called set_transient, then I got memory
-					// allocation errors (max memory reached).  So, instead, I'm running the $wpdb->update method directly.  Lame.
-					// Also, for some reason, this update process takes up to 3 seconds (for my testing with 2200 records).  Double lame.
+					// allocation errors (max memory reached).  So, instead, I'm running the $wpdb->update method directly.  Lame.  
+					// Also, for some reason, this update process takes up to 3 seconds (for my testing with 2200 records).  Double lame.  
 					// At least that will only happen when there's an update made.  Lame lame lame.
 					$wpdb->update( $wpdb->options, array( 'option_value' => serialize(array('time' => time(),'results' => $results)) ), array( 'option_name' => '_transient_dbModel_'.md5($query) ) );
 					//set_transient('dbModel_'.md5($query),array('time' => time(),'results' => $results));
 				}
 			}
 		}
-
+		
 		return $results;
 	}
-
+	
 	public function buildQuery($key = null){
 		$map = $this->get('map');
 		$this->set('primary_table',$primary_table = $map[$this->get('primary_key')]['table']);
-
+		
 		$references = $this->collectReferences();
 		$factories = $this->collectFactories();
-
+		
 		$select = array();
 		$from = array($primary_table);
 		$where = array();
-
+		
 		foreach ($map as $field => $field_map){
 			if ($field_map['table'] == $primary_table){
 				if (isset($field_map['hasMany']) and $field_map['hasMany']){
@@ -109,7 +104,7 @@ class DBModel extends AbstractModel{
 					$select[] = $this->buildSubSelect($field,$field_map);
 				}
 				else{
-					$select[] = $field_map['table'].'.'.$field_map['column'].' as '.$field;
+					$select[] = $field_map['table'].'.'.$field_map['column'].' as `'.$field.'`';
 					if (isset($field_map['where'])){
 						foreach($field_map['where'] as $where_field => $where_condition){
 							if (is_array($where_condition)){
@@ -127,21 +122,21 @@ class DBModel extends AbstractModel{
 				$select[] = $this->buildSubSelect($field,$field_map);
 			}
 		}
-
+		
 		if (!empty($key)){
 			$where[] = $references[$this->get('primary_key')].' '.$this->resolveReferences($primary_table,$key);
 		}
-
+		
 		if (empty($where)){
 			$where[] = '1 = 1';
 		}
-
-
+		
+		
 		$query = "SELECT ".implode(",\n",$select)."\nFROM ".implode(",\n",$from)."\nWHERE ".implode("\nAND ",$where);
-
+		
 		return $query;
 	}
-
+	
 	private function buildSubSelect($field,$map){
 		$group_concat = "GROUP_CONCAT(";
 		$table_ref = ($map['table'] == $this->get('primary_table') ? $map['table'].'_sub' : $map['table']); //.'_sub';
@@ -150,20 +145,20 @@ class DBModel extends AbstractModel{
 			$sep = "";
 			foreach ($map['column'] as $column){
 				$group_concat.=$sep.$this->resolveReferences($table_ref,$column,'select');
-				$sep = ',"'.self::FIELD_SEP.'",';
+				$sep = ',"'.self::getFieldSep().'",';
 			}
 			$group_concat.= ')';
 		}
 		else{
 			$group_concat.= $this->resolveReferences($table_ref,$map['column'],'select');
 		}
-		$group_concat.= " SEPARATOR '".self::GROUP_SEP."')";
-
+		$group_concat.= " SEPARATOR '".self::getGroupSep()."')";
+		
 		$from = $map['table'].' '.$table_ref;
 		$join = array();
-
+		
 		$references = $this->get('references');
-
+		
 		$where = array();
 		$table_references = array();
 		if (isset($map['where'])){
@@ -176,7 +171,6 @@ class DBModel extends AbstractModel{
 					}
 					$where_table_ref = $where_table_ref.$r;
 					$table_references[] = $where_table_ref;
-
 					$join_stmt = "LEFT JOIN ".$where_condition['table']." $where_table_ref ON ";
 					$sep = "";
 					foreach ($where_condition['where'] as $join_field => $join_condition){
@@ -193,12 +187,12 @@ class DBModel extends AbstractModel{
 				}
 			}
 		}
-
-		$subselect = "(SELECT $group_concat FROM $from ".implode("\n",$join)." WHERE ".implode(' AND ',$where).') as '.$field;
-
+		
+		$subselect = "(SELECT $group_concat FROM $from ".implode("\n",$join).(count($where) ? " WHERE ".implode(' AND ',$where) : '').') as `'.$field.'`';
+		
 		return $subselect;
 	}
-
+	
 	private function buildSubSelectForWhere($field,$condition){
 		$target = $this->resolveReferences($this->get('primary_table'),$field,'select');
 		$map = $this->get('map');
@@ -216,7 +210,7 @@ class DBModel extends AbstractModel{
 					if ($target == $this->resolveReferences($map[$test]['table'],$reference,'select')){
 						$subselect = "SELECT ".$this->resolveReferences($table_ref,$key,'select')." FROM ".$map[$test]['table'].' '.$table_ref;
 					}
-					elseif(is_array($reference)){
+					elseif(is_array($reference) and isset($reference['table'])){
 						$where_table_ref = $reference['table'];
 						$join_stmt = "LEFT JOIN ".$reference['table']." ON ";
 						$sep = "";
@@ -230,7 +224,7 @@ class DBModel extends AbstractModel{
 						$where[] = $this->resolveReferences($table_ref,$key,'select')." ".$this->resolveReferences($map[$test]['table'],$reference);
 					}
 				}
-
+				
 				$not = '';
 				foreach ($where_condition as $key => $reference){
 					if (isset($references[$key])){
@@ -241,24 +235,24 @@ class DBModel extends AbstractModel{
 							$not = "NOT";
 						}
 						else{
-							$where[] = $this->resolveReferences($map[$test]['table'],$key,'select').$this->resolveReferences('',$reference);
+							$where[] = $this->resolveReferences($map[$test]['table'],$key,'select').$this->resolveReferences('',$reference);;
 						}
 					}
 				}
 			}
-
+			
 			$clauses[] = "$target $not IN ($subselect ".implode("\n",$join)." WHERE ".implode(' AND ',$where).")";
 		}
-
+		
 		return implode("\nAND ",$clauses);
 	}
-
+		
 	private function unGroupConcat($string){
-		$values = explode(self::GROUP_SEP,$string);
+		$values = explode(self::getGroupSep(),$string);
 		$rows = array();
-		if (strpos($string,self::FIELD_SEP) !== false){
+		if (strpos($string,self::getFieldSep()) !== false){
 			foreach ($values as $i => $value){
-				$rows[] = explode(self::FIELD_SEP,$value);
+				$rows[] = explode(self::getFieldSep(),$value);
 			}
 		}
 		else{
@@ -266,7 +260,7 @@ class DBModel extends AbstractModel{
 		}
 		return $rows;
 	}
-
+	
 	private function resolveReferences($table,$column,$for = 'where'){
 		$_column = preg_replace_callback(
 			'/{{(.*)}}/',
@@ -291,7 +285,7 @@ class DBModel extends AbstractModel{
 						return ($column ? ' IS NOT NULL' : ' IS NULL');
 					}
 					else{
-						return $wpdb->prepare('= %s',$column);
+						return $wpdb->prepare('= %s',$column);				
 					}
 				}
 				break;
@@ -304,7 +298,7 @@ class DBModel extends AbstractModel{
 			case 'where':
 				if (substr($_column,0,3) == 'IN '){
 					return "$_column";
-				}
+				} 
 				else{
 					return " = $_column";
 				}
@@ -315,7 +309,7 @@ class DBModel extends AbstractModel{
 			}
 		}
 	}
-
+	
 	private function resolveReference($matches){
 		$references = $this->get('references');
 		if (isset($references[$matches[1]])){
@@ -335,7 +329,7 @@ class DBModel extends AbstractModel{
 			return $matches[1];
 		}
 	}
-
+	
 	public function collectFactories(){
 		$map = $this->get('map');
 		$factories = array();
@@ -355,7 +349,7 @@ class DBModel extends AbstractModel{
 		}
 		$this->set('factories',$factories);
 	}
-
+	
 	public function collectReferences(){
 		$map = $this->get('map');
 		$references = array();
@@ -402,18 +396,18 @@ class DBModel extends AbstractModel{
 		}
 		return $references;
 	}
-
+	
 	private function buildWhere($where,$prefix = null){
 		$sep = '';
 		foreach ($where as $field => $value){
 			$_join.= (isset($prefix) ? "$prefix." : '').$field;
 		}
 	}
-
+	
 	public function bind($reference,$value){
 		$this->apply('bound',array($reference => $value));
 	}
-
+	
 	public function addBinding($reference,$value){
 		$bound = $this->get('bound');
 		if (!isset($bound[$reference])){
@@ -428,7 +422,15 @@ class DBModel extends AbstractModel{
 			}
 		}
 		$this->set('bound',$bound);
+		
+	}
+	
+	private function getGroupSep(){
+		return (defined('DBMODEL_GROUP_SEP') ? DBMODEL_GROUP_SEP : self::GROUP_SEP);
+	}
 
+	private function getFieldSep(){
+		return (defined('DBMODEL_FIELD_SEP') ? DBMODEL_FIELD_SEP : self::FIELD_SEP);
 	}
 	
 	/** 
@@ -440,7 +442,6 @@ class DBModel extends AbstractModel{
 		$result = $wpdb->get_results('SHOW SESSION STATUS LIKE \'Questions\'');
 		return $result[0]->Value;
 	}
-
 	
 }
 endif; // class_exists

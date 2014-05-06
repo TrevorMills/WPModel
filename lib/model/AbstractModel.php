@@ -15,11 +15,6 @@ if (!class_exists('AbstractModel')) :
  *
  * The model will also allow for filtering (basically a where clause).
  *
- * Another goal of this is to allow for caching of results using the
- * WP Transient API.  When looking things up, the Model will first look
- * for an appropriate transient, and then modify it by querying the tables
- * for anything that's changed since the transient's creation time.
- *
  * Example:
  *
  * class MyModel extends AbstractModel{
@@ -28,10 +23,6 @@ if (!class_exists('AbstractModel')) :
  *		}
  * }
  *
- * If you call MyController::route('foo/bar'), it will hit the method foo, passing $arg = 'bar'
- * If no appropriate method exists, then AbstractController::fail runs, and returns false;
- * The fail() method can be overloaded by the subclass.
- *
  */
 abstract class AbstractModel{
 	var $parms;
@@ -39,13 +30,6 @@ abstract class AbstractModel{
 	public function __construct(){
 		$this->parms = array(
 			'model' => array(),
-
-			'filters' => array(
-				'equals' => create_function('$a,$b,$strict=false','return $strict ? $a === $b : $a == $b;'),
-				'matches' => create_function('$a,$reg','return preg_match($reg,$a);')
-				//'egualsDeep' => create_function('$a,$b,$ordered=false','if ($ordered) return $a == $b; foreach ($a as $key => $value){ if (is_array($value) and )}')
-			),
-
 			'map' => array()
 		);
 	}
@@ -59,7 +43,7 @@ abstract class AbstractModel{
 
 	public function get($what=null){
 		if ($what != null){
-			return $this->parms[$what];
+			return isset( $this->parms[$what] ) ? $this->parms[$what] : null;
 		}
 		else{
 			return $this->parms;
