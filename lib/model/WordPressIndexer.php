@@ -20,6 +20,12 @@ class WordPressIndexer{
 		$this->post_type = $post_type;
 	}
 	
+	public function __destruct(){
+		remove_action( 'admin_notices', array( &$this, 'admin_notices' ) );
+		remove_action( 'wp_ajax_wp_indexer', array( &$this, 'ajax' ) );		
+		remove_action( 'save_post', array( &$this, 'buildIndex' ), 100 ); 
+	}
+	
 	/** 
 	 * buildIndex
 	 * 
@@ -150,20 +156,17 @@ class WordPressIndexer{
 	
 	/** 
 	 * createIndexTables 
-	 * 
-	 * Note: the parameter $force, if set to true, will definitely try to create the tables
-	 * I only put this in there for Unit Testing purposes, where temporary tables were getting duplicated, etc.
 	 */
-	public function createIndexTables( $force = false ){
+	public function createIndexTables(){
 		global $wpdb;
 
 		// only do this once - no need to do it everytime we run buildIndex
-		if ( !$this->created_tables || $force ){
+		if ( !$this->created_tables ){
 			foreach ( $this->getIndexableMetaKeysWithColumnType() as $att => $definition ){
 				$table_name = $this->getTableName( $att ); 
 			
 				// If table exists and the type is the same, then we are good
-				if ( !$force && $wpdb->query( "SHOW TABLES LIKE '$table_name'" ) ){
+				if ( $wpdb->query( "SHOW TABLES LIKE '$table_name'" ) ){
 					$column = $wpdb->get_row( "SHOW COLUMNS FROM `$table_name` LIKE 'meta_value'" );
 					if ( strtoupper($column->Null) == 'NO' ){
 						$column->Type .= ' NOT NULL';
