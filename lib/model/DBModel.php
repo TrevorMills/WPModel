@@ -711,4 +711,3 @@ class DBModel extends AbstractModel{
 	
 }
 endif; // class_exists
-?>

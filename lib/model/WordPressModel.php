@@ -187,4 +187,3 @@ class WordPressModel extends DBModel{
 }
 
 endif; // class_exists
-?>

@@ -124,4 +124,3 @@ abstract class AbstractModel{
 }
 
 endif; // class_exists
-?>

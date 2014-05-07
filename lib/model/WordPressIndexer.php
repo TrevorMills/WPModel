@@ -402,7 +402,3 @@ SCRIPT;
 	}
 	
 }
-
-//add_action( 'init', 'WordPressIndexer::init', 100 ); // do it late to allow other plugins to setup their indices
-
-?>
