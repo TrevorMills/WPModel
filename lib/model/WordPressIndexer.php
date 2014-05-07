@@ -3,6 +3,7 @@
 class WordPressIndexer{
 	var $ready_transient_timeout = 100; // short for now, we'll increase this later
 	var $index_batch_size = 250;
+	var $created_tables = false;
 	
 	var $keys = array();
 	var $integers = array();
@@ -11,16 +12,12 @@ class WordPressIndexer{
 	var $post_type;
 	var $actions_added = false;
 	
-	static $registered_types = array();
-	
 	public function __construct( $post_type = 'post' ){
 		add_action( 'admin_notices', array( &$this, 'admin_notices' ) );
 		add_action( 'wp_ajax_wp_indexer', array( &$this, 'ajax' ) );		
 		add_action( 'save_post', array( &$this, 'buildIndex' ), 100, 2 ); // Do it late in the game
 		
 		$this->post_type = $post_type;
-		
-		self::$registered_types[ $this->post_type ] = & $this;
 	}
 	
 	/** 
@@ -29,11 +26,16 @@ class WordPressIndexer{
 	 * See http://backchannel.org/blog/friendfeed-schemaless-mysql
 	 */
 	public function buildIndex( $post_id = null ){
-		if ( empty( $this->getIndexableMetaKeys() ) ){
+		if ( empty( $this->getIndexableMetaKeys() ) || ( isset( $post_id ) && $this->post_type != get_post_type( $post_id ) ) ){
 			return;
 		}
 		
+		if ( isset( $post_id ) ){
+			$post = get_post( $post_id );
+		}
+		
 		do_action_ref_array( 'before_building_index', array( &$this ) );
+
 		
 		$this->createIndexTables();
 
@@ -148,47 +150,46 @@ class WordPressIndexer{
 	
 	/** 
 	 * createIndexTables 
-	 *
-	 * Going to build an index table for everything we might
-	 * search on, which includes:
-	 * 	- every attribute that is searchable
-	 *  - every attribute that is sortable
-	 *  - latitude, longitude
+	 * 
+	 * Note: the parameter $force, if set to true, will definitely try to create the tables
+	 * I only put this in there for Unit Testing purposes, where temporary tables were getting duplicated, etc.
 	 */
-	public function createIndexTables(){
+	public function createIndexTables( $force = false ){
 		global $wpdb;
-		
-		$indexable = array();
 
-		foreach ( $this->getIndexableMetaKeysWithColumnType() as $att => $definition ){
-			$table_name = $this->getTableName( $att ); 
+		// only do this once - no need to do it everytime we run buildIndex
+		if ( !$this->created_tables || $force ){
+			foreach ( $this->getIndexableMetaKeysWithColumnType() as $att => $definition ){
+				$table_name = $this->getTableName( $att ); 
 			
-			// If table exists and the type is the same, then we are good
-			if ( $wpdb->query( "SHOW TABLES LIKE '$table_name'" ) ){
-				$column = $wpdb->get_row( "SHOW COLUMNS FROM `$table_name` LIKE 'meta_value'" );
-				if ( strtoupper($column->Null) == 'NO' ){
-					$column->Type .= ' NOT NULL';
-				}
-				if ( strtoupper($column->Type) == $definition ){
-					// All's well
-					continue;
+				// If table exists and the type is the same, then we are good
+				if ( !$force && $wpdb->query( "SHOW TABLES LIKE '$table_name'" ) ){
+					$column = $wpdb->get_row( "SHOW COLUMNS FROM `$table_name` LIKE 'meta_value'" );
+					if ( strtoupper($column->Null) == 'NO' ){
+						$column->Type .= ' NOT NULL';
+					}
+					if ( strtoupper($column->Type) == $definition ){
+						// All's well
+						continue;
+					}
+					else{
+						// Alas, the type has changed.  
+						$wpdb->query( "ALTER TABLE `$table_name` MODIFY `meta_value` $definition" );
+					}
 				}
 				else{
-					// Alas, the type has changed.  
-					$wpdb->query( "ALTER TABLE `$table_name` MODIFY `meta_value` $definition" );
+					$unique = ( in_array( $att, $this->allow_multiple ) ? '' : 'UNIQUE' );
+					$sql = "
+						CREATE TABLE `$table_name` (
+						    `meta_value` $definition,
+							`post_id` BIGINT(20) UNSIGNED NOT NULL $unique,
+						    PRIMARY KEY ( `meta_value`, `post_id`)
+						) ENGINE=InnoDB DEFAULT CHARSET=utf8
+					";
+					$wpdb->query( $sql );
 				}
 			}
-			else{
-				$unique = ( in_array( $att, $this->allow_multiple ) ? '' : 'UNIQUE' );
-				$sql = "
-					CREATE TABLE `$table_name` (
-					    `meta_value` $definition,
-						`post_id` BIGINT(20) UNSIGNED NOT NULL $unique,
-					    PRIMARY KEY ( `meta_value`, `post_id`)
-					) ENGINE=InnoDB DEFAULT CHARSET=utf8
-				";
-				$wpdb->query( $sql );
-			}
+			$this->created_tables = true;
 		}
 	}
 	
