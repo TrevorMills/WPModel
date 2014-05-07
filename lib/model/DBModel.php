@@ -168,11 +168,10 @@ class DBModel extends AbstractModel{
 			else{
 				// It's an associative array, let's go through each element therein and winnow down the IDs that we might want to pass to the Model->getSome()
 				foreach( $where as $key => $value ){
-					if ( isset( $meta_key ) ) unset( $meta_key );
-					list( $index, $meta_key ) = explode( '.', $key );
 					$as = "w{$w}"; $w++;
 
-					if ( isset( $meta_key ) ){
+					if ( strpos( $key, '.' ) !== false ){
+						list( $index, $meta_key ) = explode( '.', $key );
 						$table_name = $map[ $index ]['table'];
 						list( $key_column, $value_column ) = $map[ $index ]['column']; // an assumption here is that the map column is setup as, i.e. array( 'meta_key', 'meta_value' )
 						foreach ( $map[ $index ][ 'where' ] as $id_column => $assignment ){
@@ -260,10 +259,8 @@ class DBModel extends AbstractModel{
 					$order_by = array( $order_by );
 				}
 				foreach ( $order_by as $number => $ob ){
-					if ( isset( $meta_key ) ) unset( $meta_key );
-					list( $index, $meta_key ) = explode( '.', $ob );
-					
-					if ( isset( $meta_key ) ){						
+					if ( strpos( $ob, '.' ) !== false ){						
+						list( $index, $meta_key ) = explode( '.', $ob );
 						foreach ( $map[ $index ][ 'where' ] as $id_column => $assignment ){
 							if ( $assignment == '{{id}}' ){
 								// found the $id_column

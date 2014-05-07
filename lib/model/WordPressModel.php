@@ -80,25 +80,32 @@ class WordPressModel extends DBModel{
 	}
 	
 	public function buildQuery( $key = null ){
-		$args = $this->get( 'args' );
-		if ( !isset( $args[ 'meta_keys' ] ) ){
-			$this->apply( 'map', array(
-				'meta' => array(
-					'where' => array(
-						'meta_key' => null
+		if ( array_key_exists( 'meta', $this->get( 'map' ) ) ){
+			// Only do this if there is a 'meta' field defined in map (there might not be if we're just doing a getCount)
+			// and there's nothing about meta in the where member
+			$args = $this->get( 'args' );
+			$bound = $this->get( 'bound' );
+			if ( !isset( $args[ 'meta_keys' ] ) && !isset( $bound[ 'the_meta_keys' ] ) ){
+				$this->apply( 'map', array(
+					'meta' => array(
+						'where' => array(
+							'meta_key' => null
+						)
 					)
-				)
-			));
-		}
-		else{
-			$this->apply( 'map', array(
-				'meta' => array(
-					'where' => array(
-						'meta_key' => '{{the_meta_keys}}'
+				));
+			}
+			else{
+				$this->apply( 'map', array(
+					'meta' => array(
+						'where' => array(
+							'meta_key' => '{{the_meta_keys}}'
+						)
 					)
-				)
-			));
-			$this->bind( 'the_meta_keys', $args['meta_keys'] );
+				));
+				if ( isset( $args['meta_keys' ] ) && ( !isset( $bound['the_meta_keys'] ) ) ){
+					$this->bind( 'the_meta_keys', $args['meta_keys'] );
+				}
+			}
 		}
 		return parent::buildQuery( $key );
 	}
