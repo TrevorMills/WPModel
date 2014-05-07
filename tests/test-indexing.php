@@ -8,7 +8,7 @@ class WPModelIndexingTest extends WP_UnitTestCase {
 	 * returns an array of the ids that were created
 	 */
 	private function createPosts(){
-		$this->maybeSetupIndexer();
+		$this->setupIndexer();
 		
 		// Create a small (10) corpus of test posts
 		$ids = array();
@@ -34,10 +34,19 @@ class WPModelIndexingTest extends WP_UnitTestCase {
 		return $ids;
 	}
 	
+	function tearDown(){
+		parent::tearDown();
+		$this->indexer->__destruct();
+	}
+	
 	/** 
 	 * Generates the proper index.
 	 */ 
-	private function maybeSetupIndexer(){
+	private function setupIndexer(){
+		$this->indexer = new WordPressIndexer( 'post' );
+		$this->indexer->addIndex( 'meta_key_integer', 'integer' );
+		$this->indexer->addIndex( 'meta_key_float', 'float' );
+		return;
 		static $indexer;
 		if ( !isset( $indexer ) ){
 			// Only build and keep one of these
