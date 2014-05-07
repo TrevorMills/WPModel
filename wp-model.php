@@ -9,6 +9,7 @@ Author: Trevor Mills
  */
 
 require_once( plugin_dir_path( __FILE__ ) . 'lib/model/WordPressModel.php' );
+require_once( plugin_dir_path( __FILE__ ) . 'lib/model/WordPressIndexer.php' );
 
 add_shortcode('wp-model','wp_model_shortcodes');
 function wp_model_shortcodes($atts=array(),$content=null,$code=''){

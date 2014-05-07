@@ -34,6 +34,42 @@ class DBModel extends AbstractModel{
 		return $this->getResults($this->buildQuery());
 	}
 	
+	public function getCount(){
+		$original_map = $map = $this->get( 'map' );
+		$original_args = $args = $this->get( 'args' );
+		
+		$in_where = array();
+		foreach ( array_keys((array)$args['where']) as $where ){
+			if ( strpos( $where, '.' ) !== false ){
+				list( $foo, $bar ) = explode( '.', $where );
+				$in_where[] = $foo;
+			}
+		}
+		
+		foreach ( $map as $key => $value ){
+			if ( $key !== 'id' && !in_array( $key, $in_where ) ){
+				unset( $map[ $key ]);
+			}
+		}
+		$this->set( 'map', $map );
+		
+		if ( isset( $args['limit'] ) ){
+			unset( $args['limit'] );
+		}
+		if ( isset( $args['order_by'] ) ){
+			unset( $args['order_by'] );
+		}
+		$this->set( 'args', $args );
+		
+		$query = $this->buildQuery();
+		global $wpdb;
+		$query = preg_replace( '/^SELECT(.*?)-- END OF MAIN SELECT/s', $this->resolveReferences($map['id']['table'], "SELECT COUNT({{id}})", 'select'), $query);
+		
+		$this->set( 'map', $original_map );
+		$this->set( 'args', $original_args );
+		return intval($wpdb->get_var( $query ));
+	}
+	
 	public function getResults($query){
 		global $wpdb;
 		
@@ -145,9 +181,14 @@ class DBModel extends AbstractModel{
 								break;
 							}
 						}
-						
+
+						$placeholder = '%s';
+						do_action_ref_array( 'build_query_setup_for_key', array( $meta_key, & $this, & $table_name, & $key_column, & $id_column, & $placeholder ) );
+
 						$joins[] = "INNER JOIN `$table_name` $as ON $as.$id_column = p.{$map['id']['column']}";
-						$wheres[] = $wpdb->prepare( "$as.$key_column = %s", $meta_key );
+						if ( !empty( $key_column ) ){
+							$wheres[] = $wpdb->prepare( "$as.$key_column = %s", $meta_key );
+						}
 						
 						if ( is_bool( $value ) ){
 							if ( $value ){
@@ -162,7 +203,6 @@ class DBModel extends AbstractModel{
 						}
 						elseif( is_array( $value ) ){
 							// They want one of any of these values
-							$placeholder = '%s'; // @todo, maybe this should be %d in some circumstances
 							$wheres[] = $wpdb->prepare( "$as.$value_column IN (" . implode(',',array_fill( 0, count( $value ), $placeholder )) . ")", $value );
 						}
 						elseif ( is_object( $value ) ){
@@ -235,8 +275,11 @@ class DBModel extends AbstractModel{
 						list( $key_column, $value_column ) = $map[ $index ]['column']; // an assumption here is that the map column is setup as, i.e. array( 'meta_key', 'meta_value' )
 						$as = "o$number";
 						
+						do_action_ref_array( 'build_query_setup_for_key', array( $meta_key, & $this, & $table_name, & $key_column, & $id_column, & $placeholder ) );
 						$joins[] = "LEFT JOIN `$table_name` $as ON $as.$id_column = p.{$map['id']['column']}";
-						$wheres[] = $wpdb->prepare( "$as.$key_column = %s", $meta_key );
+						if ( !empty( $key_column ) ){
+							$wheres[] = $wpdb->prepare( "$as.$key_column = %s", $meta_key );
+						}
 						$sql_order[] = "$as.$value_column $order";
 					}
 					else{
@@ -354,7 +397,7 @@ class DBModel extends AbstractModel{
 		}
 		
 		
-		$query = "SELECT ".implode(",\n",$select)."\nFROM ".implode(",\n",$from)."\nWHERE ".implode("\nAND ",$where);
+		$query = "SELECT ".implode(",\n",$select)."\n-- END OF MAIN SELECT\n FROM ".implode(",\n",$from)."\nWHERE ".implode("\nAND ",$where);
 		
 		return $query;
 	}
