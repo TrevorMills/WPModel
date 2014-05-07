@@ -146,20 +146,22 @@ class WordPressModel extends DBModel{
 	}
 
 	public function attachmentFactory($_attachments){
-		return array_map(create_function('$a','
-			$a["id"] =$a[0];
-			$a["meta"] = maybe_unserialize($a[1]);
-			unset($a[0]);
-			unset($a[1]);
-			if (!empty($a["meta"]["file"])){
-				$a["base"] = WP_CONTENT_URL."/uploads/".dirname($a["meta"]["file"])."/";
-				$a["meta"]["file"] = basename($a["meta"]["file"]);
-			}
-			if (isset($a["meta"]["image_meta"])){
-				unset($a["meta"]["image_meta"]);
-			}
-			return $a;
-		'),$_attachments);
+		return array_map( array( &$this, 'attachmentMassager' ), $_attachments);
+	}
+	
+	public function attachmentMassager( $a ){
+		$a["id"] =$a[0];
+		$a["meta"] = maybe_unserialize($a[1]);
+		unset($a[0]);
+		unset($a[1]);
+		if (!empty($a["meta"]["file"])){
+			$a["base"] = WP_CONTENT_URL."/uploads/".dirname($a["meta"]["file"])."/";
+			$a["meta"]["file"] = basename($a["meta"]["file"]);
+		}
+		if (isset($a["meta"]["image_meta"])){
+			unset($a["meta"]["image_meta"]);
+		}
+		return $a;
 	}
 
 	public function metaFactory($meta){
