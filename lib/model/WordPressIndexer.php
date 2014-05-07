@@ -16,6 +16,9 @@ class WordPressIndexer{
 		add_action( 'admin_notices', array( &$this, 'admin_notices' ) );
 		add_action( 'wp_ajax_wp_indexer', array( &$this, 'ajax' ) );		
 		add_action( 'save_post', array( &$this, 'buildIndex' ), 100, 2 ); // Do it late in the game
+		add_action( "added_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
+		add_action( "updated_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
+		add_action( "deleted_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
 		
 		$this->post_type = $post_type;
 	}
@@ -31,7 +34,7 @@ class WordPressIndexer{
 	 * 
 	 * See http://backchannel.org/blog/friendfeed-schemaless-mysql
 	 */
-	public function buildIndex( $post_id = null ){
+	public function buildIndex( $post_id = null, $meta_key = null ){
 		if ( empty( $this->getIndexableMetaKeys() ) || ( isset( $post_id ) && $this->post_type != get_post_type( $post_id ) ) ){
 			return;
 		}
@@ -90,6 +93,10 @@ class WordPressIndexer{
 
 				$got_one = false;
 				foreach ( $this->getIndexableMetaKeysWithColumnType() as $att => $definition ){
+					if ( isset( $meta_key ) && $att != $meta_key ){
+						// No need to continue, we're only rebuilding for this meta_key
+						continue; 
+					}
 					if ( !isset( $post_id ) && isset( $indexable[ $att ] ) && $indexable[ $att ] == $definition ){
 						// We are not working on a single post and the column definition for the attribute's index
 						// has not changed.  We can skip this attribute 
@@ -152,6 +159,12 @@ class WordPressIndexer{
 			'completed' => min( $offset, $total ),
 			'total' => $total
 		);
+	}
+	
+	public function changedPostMeta( $meta_id, $post_id, $meta_key, $meta_value ){
+		if ( in_array( $meta_key, $this->getIndexableMetaKeys() ) ){
+			$this->buildIndex( $post_id, $meta_key );
+		}
 	}
 	
 	/** 

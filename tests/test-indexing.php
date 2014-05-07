@@ -29,6 +29,8 @@ class WPModelIndexingTest extends WP_UnitTestCase {
 			add_post_meta( $id, 'meta_key_float', ($p + $p / 13) * 2, true );
 			
 			$ids[] = $id;
+			
+			//$this->indexer->buildIndex( $id ); // @TODO need to have Indexer build on add|delete|update_post_meta
 		}		
 		
 		return $ids;
@@ -46,17 +48,6 @@ class WPModelIndexingTest extends WP_UnitTestCase {
 		$this->indexer = new WordPressIndexer( 'post' );
 		$this->indexer->addIndex( 'meta_key_integer', 'integer' );
 		$this->indexer->addIndex( 'meta_key_float', 'float' );
-		return;
-		static $indexer;
-		if ( !isset( $indexer ) ){
-			// Only build and keep one of these
-			$indexer = new WordPressIndexer( 'post' );
-			$indexer->addIndex( 'meta_key_integer', 'integer' );
-			$indexer->addIndex( 'meta_key_float', 'float' );
-		}
-		else{
-			$indexer->createIndexTables( true ); // force the recreation of the index tables.
-		}
 	}
 	
 	/** 
@@ -68,10 +59,11 @@ class WPModelIndexingTest extends WP_UnitTestCase {
 		$Model = new WordPressModel();
 		$Model->apply( 'args', array(
 			'order_by' => 'meta.meta_key_integer',
-			'order' => 'ASC'
+			'order' => 'DESC'
 		));
 
 		$expected = array( '2','4','6','8','10','12','14','16','18','20' );
+		rsort( $expected );
 
 		$posts = $Model->getAll();
 		$metas = array();
@@ -104,17 +96,44 @@ class WPModelIndexingTest extends WP_UnitTestCase {
 		$Model = new WordPressModel();
 		$Model->apply( 'args', array(
 			'order_by' => 'meta.meta_key_float',
-			'order' => 'ASC'
+			'order' => 'DESC'
 		));
 		
 		$posts = $Model->getAll();
 		$sorted = array();
 		$unsorted = array();
 		foreach ( $posts as $post ){
-			$floats[] = floatval($post->meta[ 'meta_key_float' ]);
+			$sorted[] = floatval($post->meta[ 'meta_key_float' ]);
+			$unsorted[] = floatval($post->meta[ 'meta_key_float' ]);
 		}
-		sort( $floats );
+		rsort( $sorted );
 		$this->assertEquals( $unsorted, $sorted );
+	}
+	
+	function testAfterDeletingPost(){
+		$ids = $this->createPosts();
+		global $wpdb;
+		
+		$target_id = current( $ids );
+		
+		$Model = new WordPressModel();
+		$target = $Model->getOne( $target_id );
+		
+		wp_delete_post( $target_id, true );
+		
+		$this->assertNull( $Model->getOne( $target_id ) );
+		
+		$Model->apply( 'args', array(
+			'where' => array(
+				'meta.meta_key_integer' => $target->meta['meta_key_integer']
+			)
+		));
+
+		global $wpdb;
+		$this->assertEmpty( $wpdb->get_results( $wpdb->prepare( "SELECT * FROM " . $this->indexer->getTableName( 'meta_key_integer' ) . " WHERE post_id = %d", $target_id ) ) );
+		
+		// Make sure we don't pull anything back
+		$this->assertEquals( 0, $Model->getCount() );
 	}
 	
 	
