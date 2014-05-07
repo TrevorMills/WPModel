@@ -111,6 +111,9 @@ class DBModel extends AbstractModel{
 	}
 	
 	public function buildQuery( $key = null ){
+		// If not supplied with an ID, then we need to build the query based on $this->get( 'args' )
+		extract( $this->get( 'args' ) );
+		
 		if ( isset( $key ) ){
 			if ( is_array( $key ) ){
 				// Requesting Some in the form of an array of IDs
@@ -139,9 +142,6 @@ class DBModel extends AbstractModel{
 			return $query;
 		}
 
-		// If not supplied with an ID, then we need to build the query based on $this->get( 'args' )
-		extract( $this->get( 'args' ) );
-		
 		// Setup the basic query
 		$query = $this->buildBasicQuery();
 		
