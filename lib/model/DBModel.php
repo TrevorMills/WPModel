@@ -294,13 +294,14 @@ class DBModel extends AbstractModel{
 			$not = array( $not );
 		}
 		if ( count( $joins ) || count( $wheres ) || count( $sql_order ) ){
+			$id_table = $map['id']['table'];
+			$id_column = $map['id']['column'];
+			
 			if ( isset( $not ) ){
-				$wheres[] = $wpdb->prepare( "sub_id NOT IN (" . implode(',',array_fill( 0, count( $not ), '%d' )) . ")", $not );
+				$wheres[] = $wpdb->prepare( "p.$id_column NOT IN (" . implode(',',array_fill( 0, count( $not ), '%d' )) . ")", $not );
 				unset( $not );
 			}
 		
-			$id_table = $map['id']['table'];
-			$id_column = $map['id']['column'];
 			$where_subquery = "SELECT p.$id_column as sub_id FROM $id_table p\n\t" . implode( "\n\t", $joins );
 			if ( count( $wheres ) ){
 				$where_subquery.= " \nWHERE\n\t" . implode( "\nAND ", $wheres );
@@ -318,11 +319,11 @@ class DBModel extends AbstractModel{
 				$query.= " AND " . implode( ' AND ', $query_wheres );
 			}
 		
-			$query = str_replace( "FROM $id_table", "FROM $id_table\nRIGHT JOIN ( $where_subquery ) x ON x.sub_id = `id`", $query );
+			$query = preg_replace( "/-- END OF MAIN SELECT.*FROM $id_table/s", "-- END OF MAIN SELECT\nFROM $id_table\nRIGHT JOIN ( $where_subquery ) x ON x.sub_id = `id`", $query );
 		}		
 		
 		if ( isset( $not ) ){
-			$query .= $wpdb->prepare( " AND `id` NOT IN (" . implode(',',array_fill( 0, count( $not ), '%d' )) . ")", $not );
+			$query .= $this->resolveReferences( $map['id']['table'], $wpdb->prepare( " AND {{id}} NOT IN (" . implode(',',array_fill( 0, count( $not ), '%d' )) . ")", $not ), 'select' );
 		}
 		
 		if ( count( $query_order ) ){
