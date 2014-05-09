@@ -15,7 +15,6 @@ class WordPressIndexer{
 	public function __construct( $post_type = 'post' ){
 		add_action( 'admin_notices', array( &$this, 'admin_notices' ) );
 		add_action( 'wp_ajax_wp_indexer', array( &$this, 'ajax' ) );		
-		add_action( 'save_post', array( &$this, 'buildIndex' ), 100, 2 ); // Do it late in the game
 		add_action( "added_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
 		add_action( "updated_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
 		add_action( "deleted_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
@@ -26,7 +25,9 @@ class WordPressIndexer{
 	public function __destruct(){
 		remove_action( 'admin_notices', array( &$this, 'admin_notices' ) );
 		remove_action( 'wp_ajax_wp_indexer', array( &$this, 'ajax' ) );		
-		remove_action( 'save_post', array( &$this, 'buildIndex' ), 100 ); 
+		remove_action( "added_post_meta", array( &$this, 'changedPostMeta' ), 10 );
+		remove_action( "updated_post_meta", array( &$this, 'changedPostMeta' ), 10 );
+		remove_action( "deleted_post_meta", array( &$this, 'changedPostMeta' ), 10 );
 	}
 	
 	/** 
