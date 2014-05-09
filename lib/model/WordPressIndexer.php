@@ -169,7 +169,6 @@ class WordPressIndexer{
 			}		
 
 			set_transient( "_wp_indexable_keys_$this->post_type", $this->getIndexableMetaKeysWithColumnType() );
-			set_transient( "_wp_is_index_ready_$this->post_type", 1, $this->ready_transient_timeout ); // Short timeout for this inexpensive
 		}
 		
 		do_action_ref_array( 'after_building_index', array( &$this ) );
@@ -249,11 +248,14 @@ class WordPressIndexer{
 			);
 		}
 		
+		// Allow plugins to use a proxy ajax endpoint
+		$ajax_url = apply_filters( 'wp_indexer_ajax_url', admin_url( 'admin-ajax.php' ) );
+		
 		if ( count( $notices ) ){
 			$template = '
 				<div class="wp-indexer-notice" style="padding:8px 0">
 					%s
-					<form style="display:inline-block;vertical-align:middle" action="' . admin_url( 'admin-ajax.php' ) . '" method="post">
+					<form style="display:inline-block;vertical-align:middle" action="' . $ajax_url . '" method="post">
 						<input type="hidden" name="action" value="wp_indexer">
 						<input type="hidden" name="indexing_action" value="%s">
 						<input type="submit" class="button" value="Fix this">
@@ -286,7 +288,7 @@ class WordPressIndexer{
 					});
 					
 					$.extend( config, response.data.call_parms || {} );
-					$.get( ajaxurl, config, function( response){
+					$.get( '$ajax_url', config, function( response){
 						ajaxHandler( form, response );
 					});
 				}
@@ -310,7 +312,7 @@ class WordPressIndexer{
 			form.hide();
 			form.next( '.spinner' ).css({display:'inline-block'});
 			
-			$.get( ajaxurl, config, function( response ){
+			$.get( '$ajax_url', config, function( response ){
 				ajaxHandler( form, response );
 			});
 			
