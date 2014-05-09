@@ -10,7 +10,7 @@ class DBModel extends AbstractModel{
 		parent::__construct( $args );
 	}
 	
-	public function getDefaults(){
+	public static function getDefaults(){
 		return array(
 			'order_by' => '{{id}}',
 			'order' => 'DESC',
@@ -34,7 +34,7 @@ class DBModel extends AbstractModel{
 		return $this->getResults($this->buildQuery());
 	}
 	
-	public function getCount(){
+	public function getSimplifiedResults( $select, $method = 'get_results' ){
 		$original_map = $map = $this->get( 'map' );
 		$original_args = $args = $this->get( 'args' );
 		
@@ -63,11 +63,20 @@ class DBModel extends AbstractModel{
 		
 		$query = $this->buildQuery();
 		global $wpdb;
-		$query = preg_replace( '/^SELECT(.*?)-- END OF MAIN SELECT/s', $this->resolveReferences($map['id']['table'], "SELECT COUNT({{id}})", 'select'), $query);
-		
+		$query = preg_replace( '/^SELECT(.*?)-- END OF MAIN SELECT/s', $this->resolveReferences($map['id']['table'], "SELECT $select", 'select'), $query);
+	
 		$this->set( 'map', $original_map );
 		$this->set( 'args', $original_args );
-		return intval($wpdb->get_var( $query ));
+		
+		return $wpdb->$method( $query );
+	}
+	
+	public function getCount(){
+		return intval( $this->getSimplifiedResults( 'COUNT( {{id}} )', 'get_var' ) );
+	}
+	
+	public function getIds(){
+		return $this->getSimplifiedResults( '{{id}}', 'get_col' );
 	}
 	
 	public function getResults($query){
@@ -113,6 +122,10 @@ class DBModel extends AbstractModel{
 	public function buildQuery( $key = null ){
 		// If not supplied with an ID, then we need to build the query based on $this->get( 'args' )
 		extract( $this->get( 'args' ) );
+
+		if ( isset( $ordered_ids ) && !isset( $key ) ){
+			$key = $ordered_ids;
+		}
 		
 		if ( isset( $key ) ){
 			if ( is_array( $key ) ){
@@ -174,7 +187,7 @@ class DBModel extends AbstractModel{
 						list( $index, $meta_key ) = explode( '.', $key );
 						$table_name = $map[ $index ]['table'];
 						list( $key_column, $value_column ) = $map[ $index ]['column']; // an assumption here is that the map column is setup as, i.e. array( 'meta_key', 'meta_value' )
-						foreach ( $map[ $index ][ 'where' ] as $id_column => $assignment ){
+						foreach ( (array)$map[ $index ][ 'where' ] as $id_column => $assignment ){
 							if ( $assignment == '{{id}}' ){
 								// found the $id_column
 								break;
@@ -290,6 +303,10 @@ class DBModel extends AbstractModel{
 		if ( isset( $not ) && !is_array( $not ) ){
 			$not = array( $not );
 		}
+		
+		$this->buildQueryExtras( $joins, $wheres, $sql_order ); // allow extending classes to modify these
+		do_action_ref_array( 'build_query_' . get_class( $this ), array( & $this, & $joins, & $wheres, & $sql_order ) );  // allow plugins to modify them generally for this type of Model
+		
 		if ( count( $joins ) || count( $wheres ) || count( $sql_order ) ){
 			$id_table = $map['id']['table'];
 			$id_column = $map['id']['column'];
@@ -329,13 +346,12 @@ class DBModel extends AbstractModel{
 		if ( !empty( $limit ) ){
 			$query .= " LIMIT " . ( !empty( $offset ) ? "$offset, " : '' ) . " $limit";
 		}
-		/*
-		echo "<pre>$query</pre>";
-		var_dump( $where );
-		die();
-		//*/
 
 		return $query;
+	}
+	
+	public function buildQueryExtras( & $joins, & $wheres, & $sql_order ){
+		// if you have any extra logic when building your query, overload this method in your extending class
 	}
 	
 	public static function range( $from = null, $to = null ){

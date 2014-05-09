@@ -77,15 +77,19 @@ class WordPressModel extends DBModel{
 			'attachment.ID' => $wpdb->posts.'_sub.ID'
 		));
 
+		// Unset meta_keys.  It's only around as an easy way to instantiate the Model
+		// and bind 
+		$this->apply( 'args', array(
+			'meta_keys' => null
+		));
 	}
 	
 	public function buildQuery( $key = null ){
 		if ( array_key_exists( 'meta', $this->get( 'map' ) ) ){
 			// Only do this if there is a 'meta' field defined in map (there might not be if we're just doing a getCount)
 			// and there's nothing about meta in the where member
-			$args = $this->get( 'args' );
 			$bound = $this->get( 'bound' );
-			if ( !isset( $args[ 'meta_keys' ] ) && !isset( $bound[ 'the_meta_keys' ] ) ){
+			if ( !isset( $bound[ 'the_meta_keys' ] ) ){
 				$this->apply( 'map', array(
 					'meta' => array(
 						'where' => array(
@@ -102,15 +106,12 @@ class WordPressModel extends DBModel{
 						)
 					)
 				));
-				if ( isset( $args['meta_keys' ] ) && ( !isset( $bound['the_meta_keys'] ) ) ){
-					$this->bind( 'the_meta_keys', $args['meta_keys'] );
-				}
 			}
 		}
 		return parent::buildQuery( $key );
 	}
 	
-	public function getDefaults(){
+	public static function getDefaults(){
 		return array(
 			'meta_keys' => null,
 			'order_by' => 'post_date',
