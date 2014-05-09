@@ -38,7 +38,7 @@ class WordPressIndexer{
 	 * See http://backchannel.org/blog/friendfeed-schemaless-mysql
 	 */
 	public function buildIndex( $post_id = null, $meta_key = null ){
-		if ( empty( $this->getIndexableMetaKeys() ) || ( isset( $post_id ) && $this->post_type != get_post_type( $post_id ) ) ){
+		if ( !is_array( $this->getIndexableMetaKeys() ) || !count( $this->getIndexableMetaKeys() ) || ( isset( $post_id ) && $this->post_type != get_post_type( $post_id ) ) ){
 			return;
 		}
 		
