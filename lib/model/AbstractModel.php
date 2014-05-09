@@ -30,7 +30,8 @@ abstract class AbstractModel{
 	public function __construct( $args = array() ){
 		$this->set( 'map', array() );
 		$this->set( 'primary_key', 'id' );
-		$this->set( 'args', wp_parse_args( $args, $this->getDefaults() ) );
+		// The call_user_func is a way to call the proper static method for this instance
+		$this->set( 'args', wp_parse_args( $args, call_user_func( array( get_class( $this ), 'getDefaults' ) ) ) );
 	}
 
 	/**
@@ -40,7 +41,9 @@ abstract class AbstractModel{
 	 **/
 	abstract public function getOne($id);
 	
-	abstract public function getDefaults();
+	public static function getDefaults(){
+		return array();
+	}
 
 	public function get($what=null){
 		if ($what != null){
