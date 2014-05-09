@@ -186,6 +186,48 @@ class WPModelTest extends WP_UnitTestCase {
 		$this->assertEquals( $ids, array_keys( $posts ) );
 	}
 	
+	/** 
+	 * Test getting all post meta
+	 */
+	function testGetAllPostMeta(){
+		$ids = $this->createPosts();
+		$fetch_id = current( $ids );
+		
+		// First setup out model to get just meta_key_1
+		$Model = new WordPressModel();
+		
+		// Test by default we get all post meta
+		$Model = new WordPressModel();
+		$post = $Model->getOne( $fetch_id );
+		$this->assertTrue( isset( $post->meta['meta_key_1'] ) && isset( $post->meta['meta_key_2'] ), 'Got Both #1' );
+		
+		// Next, assign 'meta_keys' arg at instantiation time and make sure we get just that meta
+		$Model = new WordPressModel( array(
+			'meta_keys' => array( 'meta_key_1' )
+		));
+		$post = $Model->getOne( $fetch_id );
+		$this->assertTrue( isset( $post->meta['meta_key_1'] ) && !isset( $post->meta['meta_key_2'] ), 'Got just one #1' );
+		
+		// Now, unset the 'arg' meta_keys and see if we get both
+		$Model->apply( 'bound', array(
+			'the_meta_keys' => null
+		));
+
+		$post = $Model->getOne( $fetch_id );
+		$this->assertTrue( isset( $post->meta['meta_key_1'] ) && isset( $post->meta['meta_key_2'] ), 'Got Both #2' );
+		
+		// Apply 'bound' after instantiation a couple of times and make sure we get just those ones
+		$Model = new WordPressModel();
+		$Model->bind( 'the_meta_keys', array( 'meta_key_1' ) );
+		$post = $Model->getOne( $fetch_id );
+		$this->assertTrue( isset( $post->meta['meta_key_1'] ) && !isset( $post->meta['meta_key_2'] ), 'Got just one #2' );
+
+		$Model->bind( 'the_meta_keys', array( 'meta_key_2' ) );
+		$post = $Model->getOne( $fetch_id );
+		$this->assertTrue( !isset( $post->meta['meta_key_1'] ) && isset( $post->meta['meta_key_2'] ), 'Got just one #3' );
+		
+	}
+	
 
 }
 
