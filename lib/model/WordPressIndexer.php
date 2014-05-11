@@ -17,16 +17,23 @@ class WordPressIndexer{
 	public function __construct( $post_type = 'post' ){
 		add_action( 'admin_notices', array( &$this, 'admin_notices' ) );
 		add_action( 'wp_ajax_wp_indexer', array( &$this, 'ajax' ) );		
-		add_action( "added_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
-		add_action( "updated_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
-		add_action( "deleted_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
-		
+		$this->resumeEvents();
 		$this->post_type = $post_type;
 	}
 	
 	public function __destruct(){
 		remove_action( 'admin_notices', array( &$this, 'admin_notices' ) );
 		remove_action( 'wp_ajax_wp_indexer', array( &$this, 'ajax' ) );		
+		$this->suspendEvents();
+	}
+	
+	public function resumeEvents(){
+		add_action( "added_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
+		add_action( "updated_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
+		add_action( "deleted_post_meta", array( &$this, 'changedPostMeta' ), 10, 4 );
+	}
+	
+	public function suspendEvents(){
 		remove_action( "added_post_meta", array( &$this, 'changedPostMeta' ), 10 );
 		remove_action( "updated_post_meta", array( &$this, 'changedPostMeta' ), 10 );
 		remove_action( "deleted_post_meta", array( &$this, 'changedPostMeta' ), 10 );
