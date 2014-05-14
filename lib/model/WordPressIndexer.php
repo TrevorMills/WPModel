@@ -45,12 +45,8 @@ class WordPressIndexer{
 	 * See http://backchannel.org/blog/friendfeed-schemaless-mysql
 	 */
 	public function buildIndex( $post_id = null, $meta_key = null ){
-		if ( !is_array( $this->getIndexableMetaKeys() ) || !count( $this->getIndexableMetaKeys() ) || ( isset( $post_id ) && $this->post_type != get_post_type( $post_id ) ) ){
+		if ( !is_array( $this->getIndexableMetaKeys() ) || !count( $this->getIndexableMetaKeys() ) ){
 			return;
-		}
-		
-		if ( isset( $post_id ) ){
-			$post = get_post( $post_id );
 		}
 		
 		do_action_ref_array( 'before_building_index', array( &$this ) );
@@ -96,12 +92,9 @@ class WordPressIndexer{
 				'offset' => $offset
 			));
 			
-			$posts = isset( $post_id ) ? $Model->getSome( array_slice( $post_id, $offset, $batch_size) ) : $Model->getAll();
-			if ( !$posts ){
-				break;
-			}
+			$ids = ( isset( $post_id ) ? $post_id : $Model->getIds() );
 			
-			foreach ( $posts as $post ){
+			foreach ( $ids as $id ){
 				$counts = array();
 
 				$got_one = false;
@@ -119,9 +112,10 @@ class WordPressIndexer{
 					if ( !isset( $queries->ids[ $att ] ) ){
 						$queries->ids[ $att ] = array();
 					}
-					$queries->ids[ $att ][] = $post->id;
+					$queries->ids[ $att ][] = $id;
 
-					if ( !empty( $post->meta[ $att ] ) ){
+					$post = $Model->getOne( $id );
+					if ( $post && !empty( $post->meta[ $att ] ) ){
 						if ( !is_array( $post->meta[ $att ] ) ){
 							$post->meta[ $att ] = array( $post->meta[ $att ] );
 						}
