@@ -92,7 +92,13 @@ class WordPressIndexer{
 				'offset' => $offset
 			));
 			
-			$ids = ( isset( $post_id ) ? $post_id : $Model->getIds() );
+			if ( isset( $post_id ) ){
+				$ids = $post_id;
+			}
+			else{
+				$ids = $Model->getIds();
+				$ids = array_slice( $ids, $offset, $batch_size );
+			}
 			
 			foreach ( $ids as $id ){
 				$counts = array();
