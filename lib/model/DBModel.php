@@ -72,11 +72,11 @@ class DBModel extends AbstractModel{
 	}
 	
 	public function getCount(){
-		return intval( $this->getSimplifiedResults( 'COUNT( {{id}} )', 'get_var' ) );
+		return intval( $this->getSimplifiedResults( 'COUNT( DISTINCT {{id}} )', 'get_var' ) );
 	}
 	
 	public function getIds(){
-		return $this->getSimplifiedResults( '{{id}}', 'get_col' );
+		return $this->getSimplifiedResults( 'DISTINCT {{id}}', 'get_col' );
 	}
 	
 	public function getResults($query){
