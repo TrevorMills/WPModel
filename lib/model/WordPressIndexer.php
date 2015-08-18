@@ -229,7 +229,9 @@ class WordPressIndexer{
 						CREATE TABLE `$table_name` (
 						    `meta_value` $definition,
 							`post_id` BIGINT(20) UNSIGNED NOT NULL $unique,
-						    PRIMARY KEY ( `meta_value`, `post_id`)
+						    PRIMARY KEY ( `meta_value`, `post_id`),
+						    KEY ( `post_id` ),
+						    KEY ( `meta_value` )
 						) ENGINE=InnoDB DEFAULT CHARSET=utf8
 					";
 					$wpdb->query( $sql );
